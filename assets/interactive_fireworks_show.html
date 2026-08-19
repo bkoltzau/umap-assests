@@ -1,0 +1,97 @@
+<style>
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
+#fw-wrap{padding:1rem 0}
+#fw-canvas{display:block;width:100%;height:420px;border-radius:12px;border:0.5px solid var(--border);cursor:crosshair;background:#070b18}
+#fw-bar{display:flex;align-items:center;gap:12px;margin-top:12px;flex-wrap:wrap}
+#fw-hint{font-size:13px;color:var(--text-secondary)}
+</style>
+<div id="fw-wrap">
+<h2 class="sr-only">An interactive night sky canvas where clicking launches a firework that arcs to the click point and bursts into falling, fading particles.</h2>
+<canvas id="fw-canvas"></canvas>
+<div id="fw-bar">
+<button id="fw-show" type="button"><i class="ti ti-sparkles" aria-hidden="true" style="font-size:16px;vertical-align:-2px;margin-right:6px"></i>Launch show</button>
+<button id="fw-clear" type="button">Clear sky</button>
+<span id="fw-hint">Click the sky to launch a firework</span>
+</div>
+</div>
+<script>
+(function(){
+var cv=document.getElementById('fw-canvas'),ctx=cv.getContext('2d');
+var W=0,H=0,dpr=Math.min(window.devicePixelRatio||1,2);
+var stars=[],rockets=[],parts=[],showTimer=null,showLeft=0;
+var G=0.055,BG='#070b18';
+var HUES=[0,20,45,120,180,205,275,320];
+
+function resize(){
+  W=cv.clientWidth;H=cv.clientHeight;
+  cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr);
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  stars=[];
+  var n=Math.round(W*H/5200);
+  for(var i=0;i<n;i++)stars.push({x:Math.random()*W,y:Math.random()*H*0.92,r:Math.random()*1.1+0.3,a:Math.random()*0.6+0.25,tw:Math.random()*0.03+0.008,p:Math.random()*6.28});
+  ctx.fillStyle=BG;ctx.fillRect(0,0,W,H);
+}
+
+function launch(tx,ty){
+  var sx=W*0.5+(Math.random()-0.5)*W*0.25,sy=H;
+  var t=Math.max(34,Math.min(70,Math.sqrt(Math.abs(sy-ty))*3.4));
+  var dx=tx-sx,dy=ty-sy;
+  rockets.push({x:sx,y:sy,vx:dx/t,vy:(dy-0.5*G*t*t)/t,hue:HUES[Math.floor(Math.random()*HUES.length)],px:sx,py:sy,ty:ty});
+}
+
+function burst(r){
+  var n=70+Math.floor(Math.random()*60),ring=Math.random()<0.35,base=r.hue;
+  var spd=2.2+Math.random()*2.4;
+  for(var i=0;i<n;i++){
+    var a=Math.random()*6.2832,s=ring?spd*(0.9+Math.random()*0.15):spd*Math.pow(Math.random(),0.5);
+    parts.push({x:r.x,y:r.y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:1,decay:0.006+Math.random()*0.012,hue:(base+(Math.random()*40-20)+360)%360,lt:55+Math.random()*20,px:r.x,py:r.y});
+  }
+}
+
+function frame(){
+  ctx.globalCompositeOperation='source-over';
+  ctx.fillStyle='rgba(7,11,24,0.22)';ctx.fillRect(0,0,W,H);
+  for(var i=0;i<stars.length;i++){var st=stars[i];st.p+=st.tw;
+    ctx.globalAlpha=st.a*(0.65+0.35*Math.sin(st.p));
+    ctx.fillStyle='#dbe4ff';ctx.beginPath();ctx.arc(st.x,st.y,st.r,0,6.2832);ctx.fill();}
+  ctx.globalAlpha=1;
+  ctx.globalCompositeOperation='lighter';ctx.lineCap='round';
+
+  for(var i=rockets.length-1;i>=0;i--){
+    var r=rockets[i];r.px=r.x;r.py=r.y;r.x+=r.vx;r.y+=r.vy;r.vy+=G;
+    ctx.strokeStyle='hsl('+r.hue+',100%,72%)';ctx.lineWidth=2.4;
+    ctx.beginPath();ctx.moveTo(r.px,r.py);ctx.lineTo(r.x,r.y);ctx.stroke();
+    if(r.vy>=0||r.y<=r.ty||r.y<0){burst(r);rockets.splice(i,1);}
+  }
+  for(var i=parts.length-1;i>=0;i--){
+    var p=parts[i];p.px=p.x;p.py=p.y;
+    p.vx*=0.985;p.vy=p.vy*0.985+G;p.x+=p.vx;p.y+=p.vy;p.life-=p.decay;
+    if(p.life<=0||p.y>H+40){parts.splice(i,1);continue;}
+    ctx.strokeStyle='hsla('+p.hue+',100%,'+(45+p.life*30)+'%,'+p.life+')';
+    ctx.lineWidth=1.8*p.life+0.5;
+    ctx.beginPath();ctx.moveTo(p.px,p.py);ctx.lineTo(p.x,p.y);ctx.stroke();
+  }
+  ctx.globalCompositeOperation='source-over';
+  requestAnimationFrame(frame);
+}
+
+cv.addEventListener('click',function(e){
+  var b=cv.getBoundingClientRect();
+  launch(e.clientX-b.left,Math.min(e.clientY-b.top,H-60));
+});
+document.getElementById('fw-show').addEventListener('click',function(){
+  if(showTimer){clearInterval(showTimer);showTimer=null;this.textContent='Launch show';return;}
+  this.textContent='Stop show';showLeft=18;var btn=this;
+  showTimer=setInterval(function(){
+    var k=1+Math.floor(Math.random()*2);
+    for(var i=0;i<k;i++)setTimeout(function(){launch(W*0.1+Math.random()*W*0.8,H*0.12+Math.random()*H*0.42);},i*160);
+    if(--showLeft<=0){clearInterval(showTimer);showTimer=null;btn.textContent='Launch show';}
+  },520);
+});
+document.getElementById('fw-clear').addEventListener('click',function(){
+  rockets=[];parts=[];ctx.fillStyle=BG;ctx.fillRect(0,0,W,H);
+});
+window.addEventListener('resize',resize);
+resize();frame();
+})();
+</script>
